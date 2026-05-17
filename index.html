@@ -2,15 +2,15 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Math Trainer - Basic Facts</title>
+    <title>Math Trainer - Basic Facts (Diagnostics Edition)</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #fdfdfd; display: flex; justify-content: center; padding: 20px; }
         #app { background: white; padding: 30px; border-radius: 20px; box-shadow: 0 15px 35px rgba(0,0,0,0.1); width: 100%; max-width: 550px; text-align: center; border-top: 8px solid #e67e22; position: relative; }
         .hidden { display: none; }
         button { padding: 12px 24px; cursor: pointer; border-radius: 8px; border: none; background: #e67e22; color: white; font-weight: bold; font-size: 1rem; margin: 5px; }
         .reset-btn { background: #95a5a6; padding: 5px 10px; font-size: 0.8rem; position: absolute; top: 10px; right: 10px; }
-        .clue-btn { background: #f39c12; }
-        input[type="number"] { font-size: 2.5rem; width: 150px; text-align: center; margin: 15px; border: 3px solid #ddd; border-radius: 10px; }
+        input[type="text"], input[type="number"] { font-size: 1.5rem; padding: 10px; width: 80%; text-align: center; margin: 15px auto; border: 3px solid #ddd; border-radius: 10px; outline: none; display: block; }
+        input[type="number"] { font-size: 2.5rem; width: 150px; }
         input.error { border-color: #e74c3c; background-color: #fdf2f2; }
         #timer-container { width: 100%; height: 12px; background: #eee; border-radius: 6px; overflow: hidden; margin-bottom: 5px; }
         #timer-bar { height: 100%; background: #e74c3c; width: 100%; }
@@ -19,6 +19,10 @@
         .dot { display: inline-block; width: 15px; height: 15px; background: #e67e22; border-radius: 50%; margin: 2px; }
         .ten-frame { border: 2px solid #34495e; display: inline-block; padding: 5px; margin: 5px; border-radius: 5px; background: #ecf0f1; }
         .wrong-text { color: #e74c3c; }
+
+        /* Recovery Mode Transformations */
+        .recovery-active { border-top: 8px solid #d35400 !important; background-color: #fff9f5 !important; }
+        .recovery-banner { background: #d35400; color: white; padding: 8px; border-radius: 5px; font-weight: bold; margin-bottom: 15px; }
     </style>
 </head>
 <body>
@@ -30,14 +34,17 @@
         <h1>Basic Facts Trainer</h1>
         <p>Focusing on Doubles, Near-Doubles, and Bridging 10.</p>
         
-        <p>Number of Questions:</p>
-        <select id="total-select" style="padding: 10px; width: 100%;">
+        <p><strong>Step 1: Enter Your Name</strong></p>
+        <input type="text" id="student-name" placeholder="First and Last Name" autocomplete="off">
+
+        <p><strong>Step 2: Number of Questions</strong></p>
+        <select id="total-select" style="padding: 10px; width: 100%; border-radius: 5px;">
             <option value="10">10 Questions</option>
             <option value="20" selected>20 Questions</option>
         </select>
 
-        <p>Time per question:</p>
-        <select id="time-select" style="padding: 10px; width: 100%;">
+        <p><strong>Step 3: Time per question</strong></p>
+        <select id="time-select" style="padding: 10px; width: 100%; border-radius: 5px;">
             <option value="5">5 Seconds (Expert)</option>
             <option value="10" selected>10 Seconds (Standard)</option>
             <option value="20">20 Seconds (Learning)</option>
@@ -48,39 +55,47 @@
     </div>
 
     <div id="quiz-screen" class="hidden">
+        <div id="recovery-notice" class="recovery-banner hidden">🧠 BRAIN RECOVERY: Count/use the frames to fix it!</div>
         <div id="progress-text">Question 1 of 20</div>
         <div id="timer-container"><div id="timer-bar"></div></div>
         <div id="status-msg"></div>
+        
         <h2 id="question-display" style="font-size: 4rem; margin: 10px 0;"></h2>
         <input type="number" id="user-answer" placeholder="?" autocomplete="off">
         <br>
-        <button onclick="checkAnswer()">Submit</button>
-        <button class="clue-btn" onclick="showClue()">💡 Clue</button>
+        <button id="action-btn" onclick="checkAnswer()">Submit</button>
         <div id="visual-clue" class="hidden" style="margin-top:20px;"></div>
     </div>
 
     <div id="result-screen" class="hidden">
         <h2>Great Practice!</h2>
-        <p id="final-score" style="font-size: 2.5rem;"></p>
-        <button onclick="location.reload()" style="background: #3498db;">Restart</button>
+        <p id="final-score" style="font-size: 2.5rem; margin: 10px 0;"></p>
+        <p style="color: #2c3e50; font-weight: bold; font-size: 1.1rem;">Your clean tracking data is ready.</p>
+        <p style="color: #7f8c8d; max-width: 400px; margin: 0 auto 15px auto;">Your real first-attempt score and mistakes are preserved. Click submit on the next screen to hand it in.</p>
+        <br>
+        <button id="submit-form-btn" style="background: #2ecc71; font-size: 1.3rem; padding: 15px 30px;">👉 Hand In Score Sheet</button>
     </div>
 </div>
 
 <script>
-    let mode = 'add', currentQ = {}, timerInterval, timeLeft, score = 0, count = 0, timerPaused = false, attempts = 0, totalQuestions = 20;
+    let mode = 'add', currentQ = {}, timerInterval, timeLeft, score = 0, count = 0, timerPaused = false, studentName = "";
+    let isRecoveryMode = false, hasLoggedCurrentMistake = false, totalQuestions = 20;
 
-    // These are the "Tricky Facts" students need to master
     const additionPool = [
         [6,6], [7,7], [8,8], [9,9], [12,12], // Doubles
         [6,7], [7,8], [8,9], [9,10],         // Near Doubles
         [8,5], [8,6], [7,5], [7,6], [9,4], [9,5], [9,6], [9,7], [9,8] // Bridge 10
     ];
+    let wrongAnswersLog = [];
 
     document.addEventListener('keypress', (e) => {
         if (e.key === 'Enter' && !document.getElementById('quiz-screen').classList.contains('hidden')) checkAnswer();
     });
 
     function start(selectedMode) {
+        studentName = document.getElementById('student-name').value.trim();
+        if(!studentName) return alert("Please enter your name first!");
+
         mode = selectedMode;
         totalQuestions = parseInt(document.getElementById('total-select').value);
         document.getElementById('setup-screen').classList.add('hidden');
@@ -90,8 +105,16 @@
     }
 
     function generateQuestion() {
-        attempts = 0;
+        isRecoveryMode = false;
+        hasLoggedCurrentMistake = false;
         timerPaused = false;
+        
+        document.getElementById('app').classList.remove('recovery-active');
+        document.getElementById('recovery-notice').classList.add('hidden');
+        document.getElementById('timer-container').style.visibility = 'visible';
+        document.getElementById('action-btn').style.background = mode === 'add' ? '#e67e22' : '#d35400';
+        document.getElementById('action-btn').innerText = 'Submit';
+
         document.getElementById('progress-text').innerText = `Question ${count + 1} of ${totalQuestions}`;
         document.getElementById('status-msg').innerHTML = "";
         document.getElementById('user-answer').classList.remove('error');
@@ -103,7 +126,6 @@
         if(mode === 'add') {
             currentQ = { a: pair[0], b: pair[1], ans: pair[0] + pair[1], text: `${pair[0]} + ${pair[1]}` };
         } else {
-            // Subtraction: Start with the sum, subtract one part
             let sum = pair[0] + pair[1];
             currentQ = { a: sum, b: pair[0], ans: pair[1], text: `${sum} - ${pair[0]}` };
         }
@@ -114,22 +136,45 @@
         resetTimer();
     }
 
-    function showClue() {
+    function switchToRecovery(reason) {
         timerPaused = true;
-        document.getElementById('status-msg').innerHTML = "⏸ Timer Paused";
+        clearInterval(timerInterval);
+        
+        if (!hasLoggedCurrentMistake) {
+            const userVal = document.getElementById('user-answer').value;
+            wrongAnswersLog.push(`${currentQ.text}=${userVal || reason}`);
+            hasLoggedCurrentMistake = true;
+        }
+
+        isRecoveryMode = true;
+
+        document.getElementById('app').classList.add('recovery-active');
+        document.getElementById('recovery-notice').classList.remove('hidden');
+        document.getElementById('timer-container').style.visibility = 'hidden';
+        
+        document.getElementById('status-msg').innerHTML = reason === "Timeout" ? 
+            "<span class='wrong-text'>⏰ Out of time! Work it out below:</span>" : 
+            "<span class='wrong-text'>❌ Not quite. Fix your thinking:</span>";
+        
+        document.getElementById('action-btn').style.background = '#d35400';
+        document.getElementById('action-btn').innerText = 'Verify Fixed Answer';
+        
+        // Render frames
         const visual = document.getElementById('visual-clue');
         visual.classList.remove('hidden');
         visual.innerHTML = '';
 
         if(mode === 'add') {
-            createDots(currentQ.a, '#e67e22'); // First number
+            createDots(currentQ.a, '#e67e22'); 
             visual.innerHTML += " <span style='font-size:2rem'>+</span> ";
-            createDots(currentQ.b, '#3498db'); // Second number
+            createDots(currentQ.b, '#3498db'); 
         } else {
-            // For subtraction, show the total, but color the part being taken away
-            createDots(currentQ.b, '#ccc'); // The part taken away
-            createDots(currentQ.ans, '#e67e22'); // The part remaining
+            createDots(currentQ.b, '#ccc'); 
+            createDots(currentQ.ans, '#e67e22'); 
         }
+
+        document.getElementById('user-answer').value = '';
+        document.getElementById('user-answer').focus();
     }
 
     function createDots(num, color) {
@@ -155,9 +200,7 @@
                 timeLeft -= 0.1;
                 bar.style.width = (timeLeft / maxTime * 100) + "%";
                 if(timeLeft <= 0) {
-                    timerPaused = true;
-                    document.getElementById('status-msg').innerHTML = "<span class='wrong-text'>⏰ Time's up! Solve it to continue.</span>";
-                    showClue();
+                    switchToRecovery("Timeout");
                 }
             }
         }, 100);
@@ -165,25 +208,51 @@
 
     function checkAnswer() {
         const userAns = parseInt(document.getElementById('user-answer').value);
-        if(userAns === currentQ.ans) {
-            if(attempts === 0 && !timerPaused) score++;
-            count++;
-            if(count >= totalQuestions) endQuiz();
-            else generateQuestion();
+        
+        if (isRecoveryMode) {
+            if (userAns === currentQ.ans) {
+                count++;
+                if(count >= totalQuestions) endQuiz();
+                else generateQuestion();
+            } else {
+                document.getElementById('user-answer').classList.add('error');
+                document.getElementById('status-msg').innerHTML = "<span class='wrong-text'>Still incorrect. Work through the strategy carefully!</span>";
+            }
         } else {
-            attempts++;
-            timerPaused = true;
-            document.getElementById('user-answer').classList.add('error');
-            document.getElementById('status-msg').innerHTML = "<span class='wrong-text'>❌ Try again!</span>";
-            if(attempts >= 2) showClue();
+            if (userAns === currentQ.ans) {
+                score++; 
+                count++;
+                if(count >= totalQuestions) endQuiz();
+                else generateQuestion();
+            } else {
+                switchToRecovery("Incorrect");
+            }
         }
     }
 
     function endQuiz() {
         clearInterval(timerInterval);
         document.getElementById('quiz-screen').classList.add('hidden');
+        document.getElementById('mini-reset').classList.add('hidden');
         document.getElementById('result-screen').classList.remove('hidden');
+        
         document.getElementById('final-score').innerText = `${score} / ${totalQuestions}`;
+        
+        const modeText = mode === 'add' ? "Addition Facts" : "Subtraction Facts";
+        const cleanLog = wrongAnswersLog.length > 0 ? wrongAnswersLog.join(', ') : "None! Perfect Score";
+        
+        const encName = encodeURIComponent(studentName);
+        const encScore = encodeURIComponent(`${score}/${totalQuestions}`);
+        const encMode = encodeURIComponent(modeText);
+        const encLog = encodeURIComponent(cleanLog);
+
+        // Routing variables straight to your existing Google Form fields
+        const targetURL = `https://docs.google.com/forms/d/e/1FAIpQLScMtRYPO2c57D_s_ZVC_P5RGWxm7Eqc0fGBwpOzYqSAalh1tw/viewform?usp=pp_url&entry.1585503977=${encName}&entry.1998209579=${encScore}&entry.1159079571=${encMode}&entry.1815172227=${encLog}`;
+        
+        document.getElementById('submit-form-btn').onclick = function() {
+            window.open(targetURL, '_blank');
+            location.reload();
+        };
     }
 </script>
 </body>
